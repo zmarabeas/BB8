@@ -22,7 +22,10 @@ TODO:
 #define HEAD_SERVO 3
 #define DRIVE_MOTOR 6
 #define SIDE_MOTOR 5
-#define DEADBAND 5
+
+#define POT_PIN 2
+
+#define DEADBAND 10
 
 const byte address[6] = "00001";
 
@@ -35,8 +38,20 @@ typedef struct inputs{
 	byte lsw;
 }inputs;
 
+double setpoint_d, input_d, output_d;
+double setpoint_s1, input_s1, output_s1;
+double setpoint_s2, input_s2, output_s2;
+
+double Kpd = 1, Kid = 0, Kdd = .02;
+double Kps1 = 1, Kis1 = 0, Kds1 = .02;
+double Kps2 = 4, Kis2 = 0, Kds2 = 0.02;
+
 RF24 radio(7, 8);
-//Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28);
+Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28);
+
+PID drive_PID(&input_d, &output_d, &setpoint_d, Kpd, Kid, Kdd, DIRECT);
+PID side_PID_1(&input_s1, &output_s1, &setpoint_s1, Kps1, Kis1, Kds1, DIRECT);
+PID side_PID_2(&input_s2, &output_s2, &setpoint_s2, Kps2, Kis2, Kds2, DIRECT);
 
 Servo neck_left;
 Servo neck_right;
@@ -56,56 +71,90 @@ void setup() {
 	radio.printDetails();
 
 	/*
+	side_PID_1.SetMode(AUTOMATIC);
+	side_PID_1.SetOutputLimits(0,180);
+	side_PID_1.SetSampleTime(20);
+*/
+
+	side_PID_2.SetMode(AUTOMATIC);
+	side_PID_2.SetOutputLimits(-1000, 1000);
+	side_PID_2.SetSampleTime(20);
+
+	pinMode(SIDE_MOTOR, OUTPUT);
+	side.attach(SIDE_MOTOR);
+	side.write(90);
+
+	/*
 	while(!bno.begin()){
 		Serial.println("BNO055 not detected.");
 		delay(1000);
 	}
 	bno.setExtCrystalUse(true);
-*/
+
+	drive_PID.setMode(AUTOMATIC);
+	drive_PID.setOutputLimits(0,180);
+	drive_PID.SetSampleTime(20);
 
 	pinMode(HEAD_SERVO, OUTPUT);
 	pinMode(DRIVE_MOTOR, OUTPUT);
-	pinMode(SIDE_MOTOR, OUTPUT);
 	pinMode(NECK_SERVO_LEFT, OUTPUT);
 	pinMode(NECK_SERVO_RIGHT, OUTPUT);
 
 	head_spin.attach(HEAD_SERVO);
 	drive.attach(DRIVE_MOTOR);
-	side.attach(SIDE_MOTOR);
 	neck_left.attach(NECK_SERVO_LEFT);
 	neck_right.attach(NECK_SERVO_RIGHT);
 
 	head_spin.write(90);
 	drive.write(90);
-	side.write(90);
 	neck_left.write(90);
 	neck_right.write(90);
+*/
 }
 
 unsigned long lastReceived;
 void loop() {
 	if((millis() - lastReceived) > 200){
+		/*
 		head_spin.write(90);
 		drive.write(90);
 		side.write(90);
 		neck_left.write(90);
 		neck_right.write(90);
+*/
 		Serial.println("no controller detected");	
 	}
-	//sensors_event_t event;
-	//bno.getEvent(&event);
 	if(radio.available()){
 		int payload_size = radio.getDynamicPayloadSize();
 		if(payload_size > 1){
 			lastReceived = millis();
-			/*
-			Serial.println("packet");
-			Serial.println("------------------");
-*/
 			inputs i;
 			radio.read(&i, payload_size);
 			//printInputs(i);
+			int sidePot = analogRead(POT_PIN);
+			input_s2 = map(sidePot, 0, 1023, -1000, 1000) - 100;
+			//input_s2 = constrain((input_s2-5), -25, 25);
+			setpoint_s2 = i.lx;
+			setpoint_s2 = map(i.lx, 0, 180, -300, 300);
+			Serial.print("input: ");
+			//setpoint_s2 = 0;
+			Serial.print(input_s2);
+			Serial.print(" setpoint : ");
+			Serial.print(setpoint_s2);
+			side_PID_2.Compute();
+			output_s2 = map(output_s2, -1000, 1000, 1000, 2000);
+			if(output_s2 > 1520){
+				output_s2 += 200;
+			}
+			output_s2 = constrain(output_s2, 1000, 2000);
 
+			Serial.print(" output : ");
+			Serial.println(output_s2);
+			side.writeMicroseconds(output_s2);
+
+
+
+			/*
 			//head spin
 			uint8_t spin;
 			if(i.lsw == 1 && i.rsw == 1)
@@ -117,33 +166,37 @@ void loop() {
 			else
 				spin = 90;
 			head_spin.write(spin);
-			//Serial.println(spin);
+
+
+			sensors_event_t event;
+			bno.getEvent(&event);
+			//not sure which axis this is going to be
+			input = event.orientation.x;
+			int8_t ly = map(i.ly, 0,180,-30,30);
+			setpoint = 90 + ly;
+			drive_PID.comptue();
+			Serial.print("output: ");
+			Serial.println(output);
+
+			drive.write(deadband(output, 90, DEADBAND));
 
 			int driveSpeed = map(i.ly, 0,180,1000,2000);
 			drive.writeMicroseconds(deadband(driveSpeed, 1500, DEADBAND));
-		//	Serial.print(driveSpeed);
-		//	Serial.print(" ");
 			int sideSpeed = map(i.lx, 0,180,1000,2000);
 			side.writeMicroseconds(deadband(sideSpeed, 1500, DEADBAND));
-	//		Serial.println(sideSpeed);
-			//neck servos
 
-			Serial.print(i.ry);
-			Serial.print(" ");
-			Serial.print(i.rx);
-			Serial.print(" ");
+			//neck servos
 			uint8_t left = ((i.ry - 90) + (i.rx - 90))/2;
 			left += 90;
 			left = constrain(left, 0, 180);
-			Serial.print(left);
 			uint8_t right = ((i.ry - 90) - (i.rx - 90))/2;
-			Serial.print(" ");
 			right += 90;
 			right = constrain(right, 0, 180);
 
 			Serial.println(right);
 			neck_left.write(deadband(left, 90, DEADBAND));
 			neck_right.write(deadband(right, 90, DEADBAND));
+*/
 
 
 		}
