@@ -58,5 +58,5 @@ void loop() {
 	}
 	//output = constrain(output, 30, 150);
 	Serial.println(output);
-	s.write(output);
+	//s.write(output);
 }

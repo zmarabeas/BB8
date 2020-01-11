@@ -38,16 +38,23 @@ void setup() {
 	radio.stopListening();
 	radio.printDetails();
 }
-
+int prevX, prevY = 0;
 void loop() {
 
 	i.lsw = (digitalRead(LSW)) ? 0 : 1;
 	i.rsw = (digitalRead(RSW)) ? 0 : 1;
 
 	i.lx = map(analogRead(LVX), 0, 1024, 0, 180);
+  
+  
 	i.ly = map(analogRead(LVY), 0, 1024, 0, 180);
+
 	i.rx = map(analogRead(RVX), 0, 1024, 0, 180);
+//  i.rx = filter(i.rx, prevX,  30);
+//  prevX = i.rx;
 	i.ry = map(analogRead(RVY), 0, 1024, 0, 180);
+//  i.ry = filter( i.ry, prevY, 30);
+//  prevY = i.ry;
 
 	radio.write(&i, sizeof(inputs));
 	
@@ -60,16 +67,6 @@ void printInputs(inputs i){
 		(i.rsw == 1) ? "pressed" : "released");
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+int filter(int input, int current, int filter){
+    return (input + (current * filter))/(filter+1);
+  }

@@ -2,9 +2,11 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
 #include <utility/imumaths.h>
-#include <Servo.h>
+//#include <Servo.h>
+#include <Adafruit_TiCoServo.h>
 #include <RF24.h>
 #include <printf.h>
+#include <Ramp.h>
 #include <PID_v1.h>
 
 /*
@@ -17,20 +19,24 @@ TODO:
 	6. imu
 	7. side to side pot
 */
-#define NECK_SERVO_LEFT 9
-#define NECK_SERVO_RIGHT 10
+#define NECK_SERVO_LEFT 11
+#define NECK_SERVO_RIGHT 12
 #define HEAD_SERVO 3
-#define DRIVE_MOTOR 5
-#define SIDE_MOTOR 6 
-
+#define DRIVE_MOTOR 6
+#define SIDE_MOTOR 5
 #define POT_PIN 2
 
-#define DEADBAND 100
+#define DRIVE_DIR 36
+#define SIDE_DIR 40
+
+#define DEADBAND 50
 #define FILTER 9
 #define TIMEOUT 500
 
 #define LEFT_START 1425
 #define RIGHT_START 1492
+
+#define NECK_SPEED 1000
 
 const byte address[6] = "00001";
 
@@ -47,10 +53,17 @@ double setpoint_d, input_d, output_d;
 double setpoint_s1, input_s1, output_s1;
 double setpoint_s2, input_s2, output_s2;
 
-double Kpd = 1, Kid = 0, Kdd = .02;
-double Kps1 = 1, Kis1 = 0, Kds1 = .02;
-double Kps2 = 4, Kis2 = 0, Kds2 = 0.02;
+double Kpd = 3, Kid = 0, Kdd = .02;
+double Kps1 = 3, Kis1 = 0, Kds1 = .02;
+double Kps2 = 1, Kis2 = 0, Kds2 = 0.02;
 
+bool newLeft, newRight;
+int prevLeft, prevRight;
+int outLeft, outRight;
+int driveSpeed, sideSpeed;
+
+rampInt rightRamp;
+rampInt leftRamp;
 RF24 radio(7, 8);
 Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28);
 
@@ -58,11 +71,11 @@ PID drive_PID(&input_d, &output_d, &setpoint_d, Kpd, Kid, Kdd, DIRECT);
 PID side_PID_1(&input_s1, &output_s1, &setpoint_s1, Kps1, Kis1, Kds1, DIRECT);
 PID side_PID_2(&input_s2, &output_s2, &setpoint_s2, Kps2, Kis2, Kds2, DIRECT);
 
-Servo neck_left;
-Servo neck_right;
-Servo head_spin;
-Servo drive;
-Servo side;
+Adafruit_TiCoServo neck_left;
+Adafruit_TiCoServo neck_right;
+Adafruit_TiCoServo head_spin;
+Adafruit_TiCoServo drive;
+Adafruit_TiCoServo side;
 
 void setup() {
 	Serial.begin(9600);
@@ -74,60 +87,60 @@ void setup() {
 	radio.openReadingPipe(1, address);
 	radio.startListening();
 	radio.printDetails();
-
-	/*
-	side_PID_1.SetMode(AUTOMATIC);
-	side_PID_1.SetOutputLimits(0,180);
-	side_PID_1.SetSampleTime(20);
-*/
-
-	side_PID_2.SetMode(AUTOMATIC);
-	side_PID_2.SetOutputLimits(-1000, 1000);
-	side_PID_2.SetSampleTime(20);
-
-	pinMode(SIDE_MOTOR, OUTPUT);
-	side.attach(SIDE_MOTOR);
-	side.write(90);
-
 	
 	while(!bno.begin()){
 		Serial.println("BNO055 not detected.");
 		delay(1000);
 	}
 	bno.setExtCrystalUse(true);
-/*
-	drive_PID.setMode(AUTOMATIC);
-	drive_PID.setOutputLimits(0,180);
+
+	drive_PID.SetMode(AUTOMATIC);
+	drive_PID.SetOutputLimits(-90,90);
 	drive_PID.SetSampleTime(20);
-*/
-	pinMode(HEAD_SERVO, OUTPUT);
+
+  side_PID_1.SetMode(AUTOMATIC);
+  side_PID_1.SetOutputLimits(-90,90);
+  side_PID_1.SetSampleTime(5);
+
+  side_PID_2.SetMode(AUTOMATIC);
+  side_PID_2.SetOutputLimits(-90, 90);
+  side_PID_2.SetSampleTime(5);
+
+  pinMode(SIDE_MOTOR, OUTPUT);
+  pinMode(SIDE_DIR, OUTPUT);	
 	pinMode(DRIVE_MOTOR, OUTPUT);
+  pinMode(DRIVE_DIR, OUTPUT);
 	pinMode(NECK_SERVO_LEFT, OUTPUT);
 	pinMode(NECK_SERVO_RIGHT, OUTPUT);
+  pinMode(HEAD_SERVO, OUTPUT);
 
 	head_spin.attach(HEAD_SERVO);
 	drive.attach(DRIVE_MOTOR);
 	neck_left.attach(NECK_SERVO_LEFT);
 	neck_right.attach(NECK_SERVO_RIGHT);
-
-	head_spin.write(90);
-	drive.write(90);
-	neck_left.writeMicroseconds(LEFT_START);
-	neck_right.writeMicroseconds(RIGHT_START);
+  side.attach(SIDE_MOTOR);
+  
+  side.write(1500);
+  head_spin.write(1500);
+	drive.write(1500);
+	neck_right.writeMicroseconds(LEFT_START);
+  neck_left.writeMicroseconds(RIGHT_START);
+	
 
 }
 
+int startTime = millis();
+bool started = false;
 unsigned long lastReceived;
 long leftFiltered, rightFiltered;
 void loop() {
 	if((millis() - lastReceived) > TIMEOUT){
-		/*
-		head_spin.write(90);
-		drive.write(90);
-		side.write(90);
-		neck_left.write(90);
-		neck_right.write(90);
-*/
+		
+		head_spin.write(1500);
+		drive.write(1500);
+		side.write(1500);
+		neck_left.write(1500);
+		neck_right.write(1500);
 		Serial.println("no controller detected");	
 	}
 	if(radio.available()){
@@ -136,31 +149,32 @@ void loop() {
 			lastReceived = millis();
 			inputs i;
 			radio.read(&i, payload_size);
-			//printInputs(i);
-			int sidePot = analogRead(POT_PIN);
-			input_s2 = map(sidePot, 0, 1023, -1000, 1000) - 100;
-			//input_s2 = constrain((input_s2-5), -25, 25);
-			setpoint_s2 = i.lx;
-			setpoint_s2 = map(i.lx, 0, 180, -300, 300);
-			//Serial.print("input: ");
-			//setpoint_s2 = 0;
-			//Serial.print(input_s2);
-			//Serial.print(" setpoint : ");
-			//Serial.print(setpoint_s2);
+
+      sensors_event_t event;
+      bno.getEvent(&event);
+      //drive axis
+      int lx = map(i.lx, 0,180, -90, 90);
+      input_d = event.orientation.y*-1 + lx;
+      setpoint_d = 0;
+      drive_PID.Compute();
+
+      //imu
+      input_s1 = (event.orientation.z+13);
+      setpoint_s1 = map(i.ly, 0, 180, -90, 90)*-1;		
+      side_PID_1.Compute();	
+
+      //potentiometer
+			//setpoint_s2 = i.ly;      
+      setpoint_s2 = output_s1;
+      setpoint_s2 = constrain(setpoint_s2, -90, 90);
+      int sidePot = analogRead(POT_PIN);
+      input_s2 = map(sidePot, 0, 1023, -255, 255)+21;
+      input_s2 = constrain(input_s2, -90, 90);
+
 			side_PID_2.Compute();
-			output_s2 = map(output_s2, -1000, 1000, 1000, 2000);
-			if(output_s2 > 1520){
-				output_s2 += 200;
-			}
+			output_s2 = map(output_s2, -90, 90, 1000, 2000);
 			output_s2 = constrain(output_s2, 1000, 2000);
-
-			//Serial.print(" output : ");
-			//Serial.println(output_s2);
-			//side.writeMicroseconds(output_s2);
-
-
-
-			
+		
 			//head spin
 			int spin;
 			if(i.lsw == 1 && i.rsw == 1)
@@ -174,54 +188,62 @@ void loop() {
       //Serial.println(spin);
 			head_spin.writeMicroseconds(spin);
 
+			driveSpeed = map(output_d, -90, 90,1000,2000);	
+      //Serial.print(driveSpeed);
+      if(driveSpeed < 1520){
+          driveSpeed-=100;
+      }else if(driveSpeed > 1550){
+          driveSpeed+=150;
+      }
+      driveSpeed = constrain(driveSpeed, 1000, 2000);
+			sideSpeed = constrain(output_s2, 1000, 2000);
+      //Serial.print(" ");
+      //Serial.println(driveSpeed);
 
-			sensors_event_t event;
-			bno.getEvent(&event);
-      //Serial.print("drive axis: ");
-      //Serial.print(event.orientation.y);
-      //Serial.print(" side axis: ");
-      //Serial.print(event.orientation.z);
-	//		not sure which axis this is going to be
-			//input = event.orientation.x;
-			//int8_t ly = map(i.ly, 0,180,-30,30);
-			//setpoint = 90 + ly;
-			//drive_PID.comptue();
-			//Serial.print("output: ");
-			//Serial.println(output);
-
-			//drive.write(deadband(output, 90, DEADBAND));
-
-			int driveSpeed = map(i.ly, 0,180,1000,2000);
-			drive.writeMicroseconds(deadband(driveSpeed, 1500, DEADBAND));
-			int sideSpeed = map(i.lx, 0,180,1000,2000);
-			side.writeMicroseconds(deadband(sideSpeed, 1500, DEADBAND));
-
-			//neck servos
+      //printSensorData(event, input_s2, output_s1, output_s2);
+			
 			int left = ((i.ry - 90) + (i.rx - 90));
 			left += 90;
       
-      left = map(left, 0,180, 550,2400);
+      left = map(left, 0,180, 650,2300);
+      if(prevLeft != left){
+          newLeft = true;
+        }
+      prevLeft = left;
+
+      if(newLeft){
+          leftRamp.go(left, NECK_SPEED, LINEAR, ONCEFORWARD);
+          newLeft = false;
+        }
 			int right = ((i.ry - 90) - (i.rx - 90));
 			right += 90;
-      right = map(right, 0,180, 550,2450);
+      right = map(right, 0,180, 650,2350);
+      if(prevRight != right){
+          newRight = true;
+        }
+      prevRight = right;
+
+      if(newRight){
+          rightRamp.go(right, NECK_SPEED, LINEAR, ONCEFORWARD);
+          newRight = false;
+        }
       
-      leftFiltered = constrain(filter(left, leftFiltered, FILTER), 900, 2000);
-      rightFiltered = constrain(filter(right, rightFiltered, FILTER), 900, 2000);
+      outLeft = leftRamp.update();
+      outRight = rightRamp.update();
+      if(started){
+			  neck_left.writeMicroseconds(deadband(outLeft, 1500, DEADBAND));
+			  neck_right.writeMicroseconds(deadband(outRight, 1500, DEADBAND));
+        side.writeMicroseconds(deadband(output_s2, 1500, DEADBAND));
+        drive.writeMicroseconds(deadband(driveSpeed, 1500, DEADBAND));
+      }
 
-			neck_left.writeMicroseconds(deadband(leftFiltered, 1500, DEADBAND));
-			neck_right.writeMicroseconds(deadband(rightFiltered, 1500, DEADBAND));
-      //Serial.print(" prev: ");
-      //Serial.print(left);
-      //Serial.print(" rightPrev: ");
-      //Serial.print(right); 
-      //Serial.print(" right: ");
-      //Serial.print(rightFiltered);
-      //Serial.print(" left: ");
-      //Serial.println(leftFiltered);
-
+      if(millis()>startTime+5000){
+          started = true;
+        }
 
 		}
 	}
+ delay(5);
 }
 
 int filter(int input, int current, int filter){
@@ -236,6 +258,20 @@ int deadband(int data, int midpoint, int range){
   else
     return data;
 }
+
+void printSensorData(sensors_event_t event, int sidePot, int out1, int out2){
+    Serial.print("drive axis: ");
+    Serial.print(event.orientation.y);
+    Serial.print(" side axis: ");
+    Serial.print(event.orientation.z+13);
+    Serial.print(" side pot: ");
+    Serial.print(sidePot);
+    Serial.print(" output1 : ");
+    Serial.print(out1);
+    Serial.print(" output2 : ");
+    Serial.println(out2);
+  }
+
 
 void printInputs(inputs i){
 	printf("LX: %d LY: %d RX: %d RY: %d LSW: %s RSW: %s \
