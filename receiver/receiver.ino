@@ -26,12 +26,12 @@
 const byte address[6] = "00001";
 
 typedef struct inputs{
-	uint8_t lx;
-	uint8_t ly;
-	uint8_t rx;
-	uint8_t ry;
-	byte rsw;
-	byte lsw;
+  uint8_t lx;
+  uint8_t ly;
+  uint8_t rx;
+  uint8_t ry;
+  byte rsw;
+  byte lsw;
 }inputs;
 
 double setpoint_d, input_d, output_d;
@@ -64,26 +64,26 @@ int driveSpeed, sideSpeed;
 
 
 void setup() {
-	Serial.begin(9600);
-	Serial.println("begin");
-	printf_begin();
+  Serial.begin(9600);
+  Serial.println("begin");
+  printf_begin();
 
-	radio.begin();
-	radio.setRetries(15,15);
-	radio.setPALevel(RF24_PA_MAX);
-	radio.openReadingPipe(1, address);
-	radio.startListening();
-	radio.printDetails();
-	
-	while(!bno.begin()){
-		Serial.println("BNO055 not detected.");
-		delay(1000);
-	}
-	bno.setExtCrystalUse(true);
+  radio.begin();
+  radio.setRetries(15,15);
+  radio.setPALevel(RF24_PA_MAX);
+  radio.openReadingPipe(1, address);
+  radio.startListening();
+  radio.printDetails();
+  
+  while(!bno.begin()){
+    Serial.println("BNO055 not detected.");
+    delay(1000);
+  }
+  bno.setExtCrystalUse(true);
 
-	drive_PID.SetMode(AUTOMATIC);
-	drive_PID.SetOutputLimits(-90,90);
-	drive_PID.SetSampleTime(20);
+  drive_PID.SetMode(AUTOMATIC);
+  drive_PID.SetOutputLimits(-90,90);
+  drive_PID.SetSampleTime(20);
 
   side_PID_1.SetMode(AUTOMATIC);
   side_PID_1.SetOutputLimits(-90,90);
@@ -94,20 +94,20 @@ void setup() {
   side_PID_2.SetSampleTime(5);
 
   pinMode(SIDE_MOTOR, OUTPUT);
-	pinMode(DRIVE_MOTOR, OUTPUT);
-	pinMode(NECK_SERVO_LEFT, OUTPUT);
-	pinMode(NECK_SERVO_RIGHT, OUTPUT);
+  pinMode(DRIVE_MOTOR, OUTPUT);
+  pinMode(NECK_SERVO_LEFT, OUTPUT);
+  pinMode(NECK_SERVO_RIGHT, OUTPUT);
   pinMode(HEAD_SERVO, OUTPUT);
 
   side.attach(SIDE_MOTOR);
   drive.attach(DRIVE_MOTOR);
-	neck_left.attach(NECK_SERVO_LEFT);
-	neck_right.attach(NECK_SERVO_RIGHT);
+  neck_left.attach(NECK_SERVO_LEFT);
+  neck_right.attach(NECK_SERVO_RIGHT);
   head_spin.attach(HEAD_SERVO);
   
   side.write(1500);
   drive.write(1500);
-	neck_right.writeMicroseconds(LEFT_START);
+  neck_right.writeMicroseconds(LEFT_START);
   neck_left.writeMicroseconds(RIGHT_START);
   head_spin.write(1500);
 }
@@ -117,20 +117,20 @@ int startTime = millis();
 bool started = false;
 unsigned long lastReceived;
 void loop() {
-	if((millis() - lastReceived) > TIMEOUT){
-		head_spin.write(1500);
-		drive.write(1500);
-		side.write(1500);
-		neck_left.write(1500);
-		neck_right.write(1500);
-		Serial.println("no controller detected");	
-	}
-	if(radio.available()){
-		int payload_size = radio.getDynamicPayloadSize();
-		if(payload_size > 1){
-			lastReceived = millis();
-			inputs i;
-			radio.read(&i, payload_size);
+  if((millis() - lastReceived) > TIMEOUT){
+    head_spin.write(1500);
+    drive.write(1500);
+    side.write(1500);
+    neck_left.write(1500);
+    neck_right.write(1500);
+    Serial.println("no controller detected"); 
+  }
+  if(radio.available()){
+    int payload_size = radio.getDynamicPayloadSize();
+    if(payload_size > 1){
+      lastReceived = millis();
+      inputs i;
+      radio.read(&i, payload_size);
 
       sensors_event_t event;
       bno.getEvent(&event);
@@ -150,8 +150,8 @@ void loop() {
 
       //imu
       input_s1 = (event.orientation.z+13);
-      setpoint_s1 = map(i.ly, 0, 180, -90, 90)*-1;		
-      side_PID_1.Compute();	
+      setpoint_s1 = map(i.ly, 0, 180, -90, 90)*-1;    
+      side_PID_1.Compute(); 
 
       //potentiometer
       setpoint_s2 = output_s1;
@@ -159,25 +159,25 @@ void loop() {
       int sidePot = analogRead(POT_PIN);
       input_s2 = map(sidePot, 0, 1023, -255, 255)+21;
       input_s2 = constrain(input_s2, -90, 90);
-			side_PID_2.Compute();
-			output_s2 = map(output_s2, -90, 90, 1000, 2000);
+      side_PID_2.Compute();
+      output_s2 = map(output_s2, -90, 90, 1000, 2000);
       sideSpeed = constrain(output_s2, 1000, 2000);
-		
-			//head spin
-			int spin;
-			if(i.lsw == 1 && i.rsw == 1)
-				spin = 1500;
-			else if(i.lsw == 1)
-				spin = 1000;
-			else if(i.rsw == 1)
-				spin = 2000; 
-			else
-				spin = 1500;
-			head_spin.writeMicroseconds(spin);
-			
+    
+      //head spin
+      int spin;
+      if(i.lsw == 1 && i.rsw == 1)
+        spin = 1500;
+      else if(i.lsw == 1)
+        spin = 1000;
+      else if(i.rsw == 1)
+        spin = 2000; 
+      else
+        spin = 1500;
+      head_spin.writeMicroseconds(spin);
+      
       //neck servos
-			int left = ((i.ry - 90) + (i.rx - 90));
-			left += 90;
+      int left = ((i.ry - 90) + (i.rx - 90));
+      left += 90;
       left = map(left, 0,180, 650,2300);
       if(prevLeft != left){
           newLeft = true;
@@ -188,8 +188,8 @@ void loop() {
           newLeft = false;
         }
 
-			int right = ((i.ry - 90) - (i.rx - 90));
-			right += 90;
+      int right = ((i.ry - 90) - (i.rx - 90));
+      right += 90;
       right = map(right, 0,180, 650,2350);
       if(prevRight != right){
           newRight = true;
@@ -204,8 +204,8 @@ void loop() {
       outRight = rightRamp.update();
 
       if(started){
-			  neck_left.writeMicroseconds(deadband(outLeft, 1500, DEADBAND));
-			  neck_right.writeMicroseconds(deadband(outRight, 1500, DEADBAND));
+        neck_left.writeMicroseconds(deadband(outLeft, 1500, DEADBAND));
+        neck_right.writeMicroseconds(deadband(outRight, 1500, DEADBAND));
         side.writeMicroseconds(deadband(output_s2, 1500, DEADBAND));
         drive.writeMicroseconds(deadband(driveSpeed, 1500, DEADBAND));
       }
@@ -214,8 +214,8 @@ void loop() {
           started = true;
         }
       //printSensorData(event, input_s2, output_s1, output_s2);
-		}
-	}
+    }
+  }
  delay(5);
 }
 
@@ -249,7 +249,7 @@ void printSensorData(sensors_event_t event, int sidePot, int out1, int out2){
 
 
 void printInputs(inputs i){
-	printf("LX: %d LY: %d RX: %d RY: %d LSW: %s RSW: %s \
-		\n", i.lx, i.ly, i.rx, i.ry, (i.lsw == 1) ? "pressed" : "released", \
-		(i.rsw == 1) ? "pressed" : "released");
+  printf("LX: %d LY: %d RX: %d RY: %d LSW: %s RSW: %s \
+    \n", i.lx, i.ly, i.rx, i.ry, (i.lsw == 1) ? "pressed" : "released", \
+    (i.rsw == 1) ? "pressed" : "released");
 }
