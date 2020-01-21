@@ -18,6 +18,7 @@
 #define DEADBAND 50
 #define FILTER 9
 #define TIMEOUT 500
+#define LOOP_TIME 20
 
 #define LEFT_START 1425
 #define RIGHT_START 1492
@@ -34,11 +35,18 @@ typedef struct inputs{
   byte lsw;
 }inputs;
 
+int lx = 90;
+int ly = 90;
+int rx = 90;
+int ry = 90;
+byte rsw = 0;
+byte lsw = 0;
+
 double setpoint_d, input_d, output_d;
 double setpoint_s1, input_s1, output_s1;
 double setpoint_s2, input_s2, output_s2;
 
-double Kpd = 3, Kid = 0, Kdd = .02;
+double Kpd = 2, Kid = 0, Kdd = .02;
 double Kps1 = 3, Kis1 = 0, Kds1 = .02;
 double Kps2 = 1, Kis2 = 0, Kds2 = 0.02;
 
@@ -58,6 +66,7 @@ Adafruit_TiCoServo drive;
 Adafruit_TiCoServo side;
 
 bool newLeft, newRight;
+int left, right;
 int prevLeft, prevRight;
 int outLeft, outRight;
 int driveSpeed, sideSpeed;
@@ -87,11 +96,11 @@ void setup() {
 
   side_PID_1.SetMode(AUTOMATIC);
   side_PID_1.SetOutputLimits(-90,90);
-  side_PID_1.SetSampleTime(5);
+  side_PID_1.SetSampleTime(20);
 
   side_PID_2.SetMode(AUTOMATIC);
   side_PID_2.SetOutputLimits(-90, 90);
-  side_PID_2.SetSampleTime(5);
+  side_PID_2.SetSampleTime(20);
 
   pinMode(SIDE_MOTOR, OUTPUT);
   pinMode(DRIVE_MOTOR, OUTPUT);
@@ -116,13 +125,11 @@ void setup() {
 int startTime = millis();
 bool started = false;
 unsigned long lastReceived;
+unsigned long prevMillis;
+unsigned long looptime;
 void loop() {
   if((millis() - lastReceived) > TIMEOUT){
-    head_spin.write(1500);
-    drive.write(1500);
-    side.write(1500);
-    neck_left.write(1500);
-    neck_right.write(1500);
+    started = false;
     Serial.println("no controller detected"); 
   }
   if(radio.available()){
@@ -131,92 +138,103 @@ void loop() {
       lastReceived = millis();
       inputs i;
       radio.read(&i, payload_size);
-
-      sensors_event_t event;
-      bno.getEvent(&event);
-
-      //drive axis
-      int lx = map(i.lx, 0,180, -90, 90);
-      input_d = event.orientation.y*-1 + lx;
-      setpoint_d = 0;
-      drive_PID.Compute();
-      driveSpeed = map(output_d, -90, 90,1000,2000);  
-      if(driveSpeed < 1520){
-          driveSpeed-=100;
-      }else if(driveSpeed > 1550){
-          driveSpeed+=150;
-      }
-      driveSpeed = constrain(driveSpeed, 1000, 2000);
-
-      //imu
-      input_s1 = (event.orientation.z+13);
-      setpoint_s1 = map(i.ly, 0, 180, -90, 90)*-1;    
-      side_PID_1.Compute(); 
-
-      //potentiometer
-      setpoint_s2 = output_s1;
-      setpoint_s2 = constrain(setpoint_s2, -90, 90);
-      int sidePot = analogRead(POT_PIN);
-      input_s2 = map(sidePot, 0, 1023, -255, 255)+21;
-      input_s2 = constrain(input_s2, -90, 90);
-      side_PID_2.Compute();
-      output_s2 = map(output_s2, -90, 90, 1000, 2000);
-      sideSpeed = constrain(output_s2, 1000, 2000);
-    
-      //head spin
-      int spin;
-      if(i.lsw == 1 && i.rsw == 1)
-        spin = 1500;
-      else if(i.lsw == 1)
-        spin = 1000;
-      else if(i.rsw == 1)
-        spin = 2000; 
-      else
-        spin = 1500;
-      head_spin.writeMicroseconds(spin);
-      
-      //neck servos
-      int left = ((i.ry - 90) + (i.rx - 90));
-      left += 90;
-      left = map(left, 0,180, 650,2300);
-      if(prevLeft != left){
-          newLeft = true;
-        }
-      prevLeft = left;
-      if(newLeft){
-          leftRamp.go(left, NECK_SPEED, LINEAR, ONCEFORWARD);
-          newLeft = false;
-        }
-
-      int right = ((i.ry - 90) - (i.rx - 90));
-      right += 90;
-      right = map(right, 0,180, 650,2350);
-      if(prevRight != right){
-          newRight = true;
-        }
-      prevRight = right;
-      if(newRight){
-          rightRamp.go(right, NECK_SPEED, LINEAR, ONCEFORWARD);
-          newRight = false;
-        }
-
-      outLeft = leftRamp.update();
-      outRight = rightRamp.update();
-
-      if(started){
-        neck_left.writeMicroseconds(deadband(outLeft, 1500, DEADBAND));
-        neck_right.writeMicroseconds(deadband(outRight, 1500, DEADBAND));
-        side.writeMicroseconds(deadband(output_s2, 1500, DEADBAND));
-        drive.writeMicroseconds(deadband(driveSpeed, 1500, DEADBAND));
-      }
-
-      if(millis()>startTime+5000){
-          started = true;
-        }
-      //printSensorData(event, input_s2, output_s1, output_s2);
+      lx = i.lx;
+      ly = i.ly;
+      rx = i.rx;
+      ry = i.ry;
+      rsw = i.rsw;
+      lsw = i.lsw;
     }
   }
- delay(5);
+  if((millis() - prevMillis) < LOOP_TIME){
+    //wait
+  }else{
+    looptime = millis() - prevMillis;
+    sensors_event_t event;
+    bno.getEvent(&event);
+  
+    //drive axis
+    lx = map(lx, 0,180, -90, 90);
+    input_d = event.orientation.y*-1 + lx/3;
+    setpoint_d = 0;
+    drive_PID.Compute();
+    driveSpeed = map(output_d, -90, 90,1000,2000);  
+    if(driveSpeed < 1520){
+        driveSpeed-=100;
+    }else if(driveSpeed > 1550){
+        driveSpeed+=150;
+    }
+    driveSpeed = constrain(driveSpeed, 1000, 2000);
+    Serial.println(lx);
+  
+    //imu
+    input_s1 = (event.orientation.z+13)*-1;
+    setpoint_s1 = map(ly, 0, 180, -90, 90);    
+    side_PID_1.Compute(); 
+  
+    //potentiometer
+    setpoint_s2 = output_s1;
+    setpoint_s2 = constrain(setpoint_s2, -90, 90);
+    int sidePot = analogRead(POT_PIN);
+    input_s2 = map(sidePot, 0, 1023, -255, 255)+47;
+    input_s2 = constrain(input_s2, -90, 90);
+    side_PID_2.Compute();
+    output_s2 = map(output_s2, -90, 90, 1000, 2000);
+    sideSpeed = constrain(output_s2, 1000, 2000);
+  
+    //head spin
+    int spin;
+    if(lsw == 1 && rsw == 1)
+      spin = 1500;
+    else if(lsw == 1)
+      spin = 1000;
+    else if(rsw == 1)
+      spin = 2000; 
+    else
+      spin = 1500;
+    head_spin.writeMicroseconds(spin);
+    
+    //neck servos
+    left = ((ry - 90) + (rx - 90));
+    left += 90;
+    left = map(left, 0,180, 650,2300);
+    if(prevLeft != left){
+        newLeft = true;
+      }
+    prevLeft = left;
+    if(newLeft){
+        leftRamp.go(left, NECK_SPEED, LINEAR, ONCEFORWARD);
+        newLeft = false;
+      }
+  
+    right = ((ry - 90) - (rx - 90));
+    right += 90;
+    right = map(right, 0,180, 650,2350);
+    if(prevRight != right){
+        newRight = true;
+      }
+    prevRight = right;
+    if(newRight){
+        rightRamp.go(right, NECK_SPEED, LINEAR, ONCEFORWARD);
+        newRight = false;
+      }
+  
+    outLeft = leftRamp.update();
+    outRight = rightRamp.update();
+  
+    if(started){
+      neck_left.writeMicroseconds(deadband(outLeft, 1500, DEADBAND));
+      neck_right.writeMicroseconds(deadband(outRight, 1500, DEADBAND));
+      side.writeMicroseconds(deadband(output_s2, 1500, DEADBAND));
+      drive.writeMicroseconds(deadband(driveSpeed, 1500, DEADBAND));
+    }
+  
+    if(millis()>startTime+5000){
+        started = true;
+      }
+    //printSensorData(event, input_s2, output_s1, output_s2);
+    prevMillis = millis();
+  }
 }
 
 int filter(int input, int current, int filter){
