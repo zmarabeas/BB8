@@ -125,17 +125,19 @@ void setup() {
 int startTime = millis();
 bool started = false;
 unsigned long lastReceived;
+unsigned long currMillis;
 unsigned long prevMillis;
 unsigned long looptime;
 void loop() {
-  if((millis() - lastReceived) > TIMEOUT){
+  currMillis = millis();
+  if((currMillis - lastReceived) > TIMEOUT){
     started = false;
     Serial.println("no controller detected"); 
   }
   if(radio.available()){
     int payload_size = radio.getDynamicPayloadSize();
     if(payload_size > 1){
-      lastReceived = millis();
+      lastReceived = currMillis; 
       inputs i;
       radio.read(&i, payload_size);
       lx = i.lx;
@@ -146,10 +148,10 @@ void loop() {
       lsw = i.lsw;
     }
   }
-  if((millis() - prevMillis) < LOOP_TIME){
+  if((currMillis - prevMillis) < LOOP_TIME){
     //wait
   }else{
-    looptime = millis() - prevMillis;
+    looptime = currMillis - prevMillis;
     sensors_event_t event;
     bno.getEvent(&event);
   
@@ -229,11 +231,11 @@ void loop() {
       drive.writeMicroseconds(deadband(driveSpeed, 1500, DEADBAND));
     }
   
-    if(millis()>startTime+5000){
+    if(currMillis>startTime+5000){
         started = true;
       }
     //printSensorData(event, input_s2, output_s1, output_s2);
-    prevMillis = millis();
+    prevMillis = currMillis;
   }
 }
 
