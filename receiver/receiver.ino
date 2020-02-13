@@ -26,10 +26,10 @@
 const byte address[6] = "00001";
 
 typedef struct inputs{
-  uint8_t lx;
-  uint8_t ly;
-  uint8_t rx;
-  uint8_t ry;
+  float lx;
+  float ly;
+  float rx;
+  float ry;
   byte rsw;
   byte lsw;
 }inputs;
