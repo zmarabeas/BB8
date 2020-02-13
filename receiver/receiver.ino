@@ -27,10 +27,10 @@
 const byte address[6] = "00001";
 
 typedef struct inputs{
-  uint8_t lx;
-  uint8_t ly;
-  uint8_t rx;
-  uint8_t ry;
+  float lx;
+  float ly;
+  float rx;
+  float ry;
   byte rsw;
   byte lsw;
 }inputs;
@@ -122,16 +122,17 @@ void setup() {
 }
 
 
-int startTime = millis();
+unsigned long startTime = millis();
 bool started = false;
-unsigned long lastReceived;
-unsigned long currMillis;
-unsigned long prevMillis;
-unsigned long looptime;
+unsigned long lastReceived, currMillis;
 void loop() {
   currMillis = millis();
   if((currMillis - lastReceived) > TIMEOUT){
-    started = false;
+    head_spin.write(1500);
+    drive.write(1500);
+    side.write(1500);
+    neck_left.write(1500);
+    neck_right.write(1500);
     Serial.println("no controller detected"); 
   }
   if(radio.available()){
