@@ -113,11 +113,12 @@ void setup() {
 }
 
 
-int startTime = millis();
+unsigned long startTime = millis();
 bool started = false;
-unsigned long lastReceived;
+unsigned long lastReceived, currMillis;
 void loop() {
-  if((millis() - lastReceived) > TIMEOUT){
+  currMillis = millis();
+  if((currMillis - lastReceived) > TIMEOUT){
     head_spin.write(1500);
     drive.write(1500);
     side.write(1500);
@@ -128,7 +129,7 @@ void loop() {
   if(radio.available()){
     int payload_size = radio.getDynamicPayloadSize();
     if(payload_size > 1){
-      lastReceived = millis();
+      lastReceived = currMillis;
       inputs i;
       radio.read(&i, payload_size);
 
@@ -210,7 +211,7 @@ void loop() {
         drive.writeMicroseconds(deadband(driveSpeed, 1500, DEADBAND));
       }
 
-      if(millis()>startTime+5000){
+      if(currMillis>startTime+5000){
           started = true;
         }
       //printSensorData(event, input_s2, output_s1, output_s2);
