@@ -5,7 +5,6 @@
 #include <Adafruit_TiCoServo.h>
 #include <RF24.h>
 #include <printf.h>
-#include <Ramp.h>
 #include <PID_v1.h>
 
 #define NECK_SERVO_LEFT 11
@@ -24,7 +23,7 @@
 #define RIGHT_START 1492
 #define NECK_SPEED 1000
 
-const byte address[6] = "00001";
+const byte address[6] = "00BB8";
 
 typedef struct inputs{
   float lx;
@@ -54,8 +53,6 @@ PID drive_PID(&input_d, &output_d, &setpoint_d, Kpd, Kid, Kdd, DIRECT);
 PID side_PID_1(&input_s1, &output_s1, &setpoint_s1, Kps1, Kis1, Kds1, DIRECT);
 PID side_PID_2(&input_s2, &output_s2, &setpoint_s2, Kps2, Kis2, Kds2, DIRECT);
 
-rampInt rightRamp;
-rampInt leftRamp;
 RF24 radio(7, 8);
 Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28);
 
@@ -65,10 +62,7 @@ Adafruit_TiCoServo head_spin;
 Adafruit_TiCoServo drive;
 Adafruit_TiCoServo side;
 
-bool newLeft, newRight;
 int left, right;
-int prevLeft, prevRight;
-int outLeft, outRight;
 int driveSpeed, sideSpeed;
 
 
@@ -121,10 +115,10 @@ void setup() {
   head_spin.write(1500);
 }
 
-
 unsigned long startTime = millis();
 bool started = false;
-unsigned long lastReceived, currMillis;
+unsigned long looptime = 0;
+unsigned long lastReceived, currMillis, prevMillis = 0;
 void loop() {
   currMillis = millis();
   if((currMillis - lastReceived) > TIMEOUT){
@@ -153,6 +147,11 @@ void loop() {
     //wait
   }else{
     looptime = currMillis - prevMillis;
+    if(looptime > LOOP_TIME){
+      Serial.print("Loop time overrun by: ");
+      Serial.print(looptime-LOOP_TIME);
+      Serial.print("ms")
+    }
     sensors_event_t event;
     bno.getEvent(&event);
   
@@ -168,7 +167,6 @@ void loop() {
         driveSpeed+=150;
     }
     driveSpeed = constrain(driveSpeed, 1000, 2000);
-    Serial.println(lx);
   
     //imu
     input_s1 = (event.orientation.z+13)*-1;
@@ -201,33 +199,14 @@ void loop() {
     left = ((ry - 90) + (rx - 90));
     left += 90;
     left = map(left, 0,180, 650,2300);
-    if(prevLeft != left){
-        newLeft = true;
-      }
-    prevLeft = left;
-    if(newLeft){
-        leftRamp.go(left, NECK_SPEED, LINEAR, ONCEFORWARD);
-        newLeft = false;
-      }
   
     right = ((ry - 90) - (rx - 90));
     right += 90;
     right = map(right, 0,180, 650,2350);
-    if(prevRight != right){
-        newRight = true;
-      }
-    prevRight = right;
-    if(newRight){
-        rightRamp.go(right, NECK_SPEED, LINEAR, ONCEFORWARD);
-        newRight = false;
-      }
-  
-    outLeft = leftRamp.update();
-    outRight = rightRamp.update();
   
     if(started){
-      neck_left.writeMicroseconds(deadband(outLeft, 1500, DEADBAND));
-      neck_right.writeMicroseconds(deadband(outRight, 1500, DEADBAND));
+      neck_left.writeMicroseconds(left);
+      neck_right.writeMicroseconds(right);
       side.writeMicroseconds(deadband(output_s2, 1500, DEADBAND));
       drive.writeMicroseconds(deadband(driveSpeed, 1500, DEADBAND));
     }
