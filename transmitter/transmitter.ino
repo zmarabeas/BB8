@@ -22,6 +22,7 @@ typedef struct inputs{
 }inputs;
 
 inputs i;
+inputs prev_i;
 RF24 radio(9,10);
 
 void setup() {
