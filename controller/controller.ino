@@ -1,54 +1,7 @@
 #include <LiquidCrystal.h>
 #include <RF24.h>
 #include <printf.h>
-
-//JOYSTICKS
-#define BL_Y 1
-#define BL_X 0
-#define BL_B 10
-#define TL_Y 2
-#define TL_X 3
-#define TL_B 9
-#define BR_Y 4
-#define BR_X 5
-#define BR_B 23
-#define TR_Y 6
-#define TR_X 7
-#define TR_B 25
-
-//BUTTONS
-#define GREEN_RIGHT 39
-#define GREEN_RIGHT 41
-#define RED_RIGHT 43
-#define RED_LEFT 45
-#define BLACK_RIGHT 47
-#define BLACK_LEFT 49
-#define BLUE_LEFT 27
-#define BLUE_RIGHT 29
-#define WHITE_LEFT 31
-#define WHITE_RIGHT 33
-#define YELLOW_LEFT 35
-#define YELLOW_RIGHT 37
-
-//SWITCHES
-#define TOP_L 48
-#define TOP_M 46
-#define TOP_R 44
-#define MID_L 42
-#define MID_M 40
-#define MID_R 38
-#define BOT_L_UP 34
-#define BOT_L_DOWN 32
-#define BOT_M_UP 30
-#define BOT_M_DOWN 26
-#define BOT_R_UP 24
-#define BOT_R_DOWN 22
-
-//POTS
-#define LEFT_POT 9
-#define RIGHT_POT 8 //inverted for some reason
-
-#define BUTTON_DELAY 200
+#include "buttonMap.h"
 
 const byte address[6] = "00BB8";
 
@@ -84,7 +37,6 @@ void setup() {
   radio.openWritingPipe(address);
   radio.stopListening();
   //radio.printDetails();
-
 }
 
 void loop() {
@@ -95,10 +47,10 @@ void loop() {
     lcd.print(filter_left);
     lcd.print(" R: ");
     lcd.print(filter_right);    
-    i.lx = map(analogRead(BL_X), 0, 1024, 0, 180);
+    i.lx = map(analogRead(BR_X), 0, 1024, 0, 180);
     i.ly = map(analogRead(BL_Y), 0, 1024, 0, 180);
-    i.rx = map(analogRead(BR_X), 0, 1024, 0, 180);
-    i.ry = map(analogRead(BR_Y), 0, 1024, 0, 180);
+    i.rx = map(analogRead(TR_X), 0, 1024, 0, 180);
+    i.ry = map(analogRead(TR_Y), 0, 1024, 0, 180);
     
     filtered_i.lsw = (digitalRead(BLUE_LEFT)) ? 0 : 1;
     filtered_i.rsw = (digitalRead(BLUE_RIGHT)) ? 0 : 1;
@@ -121,8 +73,7 @@ void loop() {
 //    Serial.print(filtered_i.rx);
 //    Serial.print(" ");
 //    Serial.print(filtered_i.ry);
-//    Serial.println(" ");
-    
+//    Serial.println(" ");    
 }
 
 void printInputs(inputs i){
