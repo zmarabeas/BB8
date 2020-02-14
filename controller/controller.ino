@@ -3,8 +3,8 @@
 #include <printf.h>
 
 //JOYSTICKS
-#define BL_Y 0
-#define BL_X 1
+#define BL_Y 1
+#define BL_X 0
 #define BL_B 10
 #define TL_Y 2
 #define TL_X 3
@@ -50,7 +50,7 @@
 
 #define BUTTON_DELAY 200
 
-const byte address[6] = "00001";
+const byte address[6] = "00BB8";
 
 typedef struct inputs{
   float lx;
@@ -64,53 +64,47 @@ typedef struct inputs{
 inputs i;
 inputs filtered_i;
 LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
-RF24 radio(9,10);
+RF24 radio(7,8);
 
 double filter_left, filter_right = 0;
 
 void setup() {
   Serial.begin(9600);
   lcd.begin(16, 2);
-  lcd.print("Hello, BB8!");
+  lcd.print("Address: ");
+  lcd.print((char*)address);
   analogWrite(6, 100); //contrast for lcd
 
   pinMode(BLUE_LEFT, INPUT_PULLUP);
   pinMode(BLUE_RIGHT, INPUT_PULLUP);
   Serial.println(sizeof(inputs));
+  radio.begin();
+  radio.setRetries(15,15);
+  radio.setPALevel(RF24_PA_MAX);
+  radio.openWritingPipe(address);
+  radio.stopListening();
+  //radio.printDetails();
 
 }
 
-int val = 0;
-int prevVal = 0;
-unsigned long curr_millis, prev_millis = 0;
-unsigned long loop_time = 20;
 void loop() {
-//    curr_millis = millis();
-//  if (curr_millis - prev_millis < loop_time){
-//    //wait
-//  }else{
-//    Serial.print("time: ");
-//    Serial.print(curr_millis - prev_millis);
-//    prev_millis = curr_millis;
-//    
-//    Serial.println(" ");
     lcd.setCursor(0, 1);
     filter_left = remap(analogRead(LEFT_POT), 0, 1023, 0.0, 1.0);
     filter_right = remap(analogRead(RIGHT_POT), 0, 1023, 1.0, 0.0);
     lcd.print("L: ");
     lcd.print(filter_left);
     lcd.print(" R: ");
-    lcd.print(filter_right);
-    i.lsw = !digitalRead(BLUE_LEFT);
-    i.rsw = !digitalRead(BLUE_RIGHT);
+    lcd.print(filter_right);    
     i.lx = map(analogRead(BL_X), 0, 1024, 0, 180);
     i.ly = map(analogRead(BL_Y), 0, 1024, 0, 180);
     i.rx = map(analogRead(BR_X), 0, 1024, 0, 180);
     i.ry = map(analogRead(BR_Y), 0, 1024, 0, 180);
-    //radio.write(&i, sizeof(inputs));
     
+    filtered_i.lsw = (digitalRead(BLUE_LEFT)) ? 0 : 1;
+    filtered_i.rsw = (digitalRead(BLUE_RIGHT)) ? 0 : 1;
     filter(0, (double)filter_left, &i, &filtered_i);
     filter(1, (double)filter_right, &i, &filtered_i);
+    radio.write(&filtered_i, sizeof(inputs));
     
 //    Serial.print(i.ry);
 //    Serial.print(" ");
@@ -129,20 +123,6 @@ void loop() {
 //    Serial.print(filtered_i.ry);
 //    Serial.println(" ");
     
-//    printInputs(i);
-//    Serial.print("left: ");
-//    if(i.lsw){
-//      Serial.print("pressed");
-//      }else{
-//        Serial.print("nopress");
-//        }
-//    Serial.print(" right: ");
-//    if(i.rsw){
-//      Serial.println("pressed");
-//      }else{
-//        Serial.println("nopress");
-//        }
-//  }
 }
 
 void printInputs(inputs i){
@@ -153,7 +133,7 @@ void printInputs(inputs i){
 
 int filter(bool side, double tf, inputs *curr_inputs, inputs *prev_inputs){
   //(1-a)*filtered + a*current
-  double ts = 1.0/50.0;
+  double ts = 1.0/100.0;
   double a = ts/(tf+ts);
   if(side == 0){
     prev_inputs->lx = ((1.0-a)*prev_inputs->lx + a*curr_inputs->lx);
