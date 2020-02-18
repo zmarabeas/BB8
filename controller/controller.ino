@@ -10,9 +10,10 @@ typedef struct inputs{
   float ly;
   float rx;
   float ry;
-  byte rsw;
-  byte lsw;
+  bool rsw;
+  bool lsw;
   bool enable;
+  bool sound;
 }inputs;
 
 inputs i;
@@ -58,9 +59,10 @@ void loop() {
     i.rx = map(analogRead(TR_X), 0, 1024, 0, 180);
     i.ry = map(analogRead(TR_Y), 0, 1024, 0, 180);
     
-    filtered_i.lsw = (digitalRead(BLUE_LEFT)) ? 0 : 1;
-    filtered_i.rsw = (digitalRead(BLUE_RIGHT)) ? 0 : 1;
+    filtered_i.lsw = !digitalRead(BLUE_LEFT);
+    filtered_i.rsw = !digitalRead(BLUE_RIGHT);
     filtered_i.enable = !digitalRead(TOP_L);
+    filtered_i.sound = !digitalRead(GREEN_LEFT);
     filter(0, (double)filter_left, &i, &filtered_i);
     filter(1, (double)filter_right, &i, &filtered_i);
     radio.enableDynamicAck();

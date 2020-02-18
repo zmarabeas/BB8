@@ -6,6 +6,7 @@
 #include <RF24.h>
 #include <printf.h>
 #include <PID_v1.h>
+#include "sounds.h"
 
 #define NECK_SERVO_LEFT 11
 #define NECK_SERVO_RIGHT 12
@@ -30,17 +31,19 @@ typedef struct inputs{
   float ly;
   float rx;
   float ry;
-  byte rsw;
-  byte lsw;
+  bool rsw;
+  bool lsw;
   bool enable;
+  bool sound;
 }inputs;
 
 int lx = 90;
 int ly = 90;
 int rx = 90;
 int ry = 90;
-byte rsw = 0;
-byte lsw = 0;
+bool rsw = 0;
+bool lsw = 0;
+bool sound;
 bool enable = false;
 
 double setpoint_d, input_d, output_d;
@@ -70,7 +73,9 @@ int driveSpeed, sideSpeed;
 
 void setup() {
   Serial.begin(9600);
+  Serial3.begin(9600);
   Serial.println("begin");
+  sendCommand(CMD_SET_VOLUME, 0x16);
   printf_begin();
 
   radio.begin();
@@ -121,6 +126,8 @@ unsigned long startTime = millis();
 bool started = false;
 unsigned long looptime = 0;
 unsigned long lastReceived, currMillis, prevMillis = 0;
+unsigned long lastSound;
+
 void loop() {
   currMillis = millis();
   if((currMillis - lastReceived) > TIMEOUT || !enable){
@@ -146,6 +153,7 @@ void loop() {
       rsw = i.rsw;
       lsw = i.lsw;
       enable = i.enable;
+      sound = i.sound;
     }
   }
   if((currMillis - prevMillis) < LOOP_TIME){
@@ -185,12 +193,12 @@ void loop() {
   
     //head spin
     int spin;
-    if(lsw == 1 && rsw == 1)
+    if(lsw && rsw)
       spin = 1500;
-    else if(lsw == 1)
+    else if(lsw)
       spin = 1000;
-    else if(rsw == 1)
-      spin = 2000; 
+    else if(rsw)
+      spin = 1700; 
     else
       spin = 1500;
     head_spin.writeMicroseconds(spin);
@@ -212,10 +220,18 @@ void loop() {
       side.writeMicroseconds(deadband(output_s2, 1500, DEADBAND));
       drive.writeMicroseconds(deadband(driveSpeed, 1500, DEADBAND));
     }
+
+    //sounds
+    if(sound){
+      if(currMillis - lastSound){
+        lastSound - currMillis;
+        sendCommand(CMD_PLAY_WITHFOLDER, 0x0101);
+      }
+    }
   
     if(currMillis>startTime+5000){
         started = true;
-      }
+    }
   }
 }
 
