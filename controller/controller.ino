@@ -12,6 +12,7 @@ typedef struct inputs{
   float ry;
   byte rsw;
   byte lsw;
+  bool enable;
 }inputs;
 
 inputs i;
@@ -30,6 +31,7 @@ void setup() {
 
   pinMode(BLUE_LEFT, INPUT_PULLUP);
   pinMode(BLUE_RIGHT, INPUT_PULLUP);
+  pinMode(TOP_L, INPUT_PULLUP);
   Serial.println(sizeof(inputs));
   radio.begin();
   radio.setRetries(15,15);
@@ -39,7 +41,11 @@ void setup() {
   //radio.printDetails();
 }
 
+unsigned long prevMillis, currMillis = 0;
 void loop() {
+    currMillis = millis();
+    Serial.println(currMillis-prevMillis);
+    prevMillis = currMillis;
     lcd.setCursor(0, 1);
     filter_left = remap(analogRead(LEFT_POT), 0, 1023, 0.0, 1.0);
     filter_right = remap(analogRead(RIGHT_POT), 0, 1023, 1.0, 0.0);
@@ -47,16 +53,18 @@ void loop() {
     lcd.print(filter_left);
     lcd.print(" R: ");
     lcd.print(filter_right);    
-    i.lx = map(analogRead(BR_X), 0, 1024, 0, 180);
-    i.ly = map(analogRead(BL_Y), 0, 1024, 0, 180);
+    i.lx = map(analogRead(BL_X), 0, 1024, 0, 180);
+    i.ly = map(analogRead(BR_Y), 0, 1024, 0, 180);
     i.rx = map(analogRead(TR_X), 0, 1024, 0, 180);
     i.ry = map(analogRead(TR_Y), 0, 1024, 0, 180);
     
     filtered_i.lsw = (digitalRead(BLUE_LEFT)) ? 0 : 1;
     filtered_i.rsw = (digitalRead(BLUE_RIGHT)) ? 0 : 1;
+    filtered_i.enable = !digitalRead(TOP_L);
     filter(0, (double)filter_left, &i, &filtered_i);
     filter(1, (double)filter_right, &i, &filtered_i);
-    radio.write(&filtered_i, sizeof(inputs));
+    radio.enableDynamicAck();
+    radio.writeFast(&filtered_i, sizeof(inputs), 1);
     
 //    Serial.print(i.ry);
 //    Serial.print(" ");

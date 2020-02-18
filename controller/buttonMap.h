@@ -7,8 +7,8 @@
 #define TL_Y 2
 #define TL_X 3
 #define TL_B 9
-#define BR_Y 4
-#define BR_X 5
+#define BR_Y 5
+#define BR_X 4
 #define BR_B 23
 #define TR_Y 6
 #define TR_X 7
