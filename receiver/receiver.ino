@@ -32,6 +32,7 @@ typedef struct inputs{
   float ry;
   byte rsw;
   byte lsw;
+  bool enable;
 }inputs;
 
 int lx = 90;
@@ -40,6 +41,7 @@ int rx = 90;
 int ry = 90;
 byte rsw = 0;
 byte lsw = 0;
+bool enable = false;
 
 double setpoint_d, input_d, output_d;
 double setpoint_s1, input_s1, output_s1;
@@ -121,13 +123,14 @@ unsigned long looptime = 0;
 unsigned long lastReceived, currMillis, prevMillis = 0;
 void loop() {
   currMillis = millis();
-  if((currMillis - lastReceived) > TIMEOUT){
+  if((currMillis - lastReceived) > TIMEOUT || !enable){
     head_spin.write(1500);
     drive.write(1500);
     side.write(1500);
     neck_left.write(1500);
     neck_right.write(1500);
-    Serial.println("no controller detected"); 
+    if((currMillis - lastReceived) > TIMEOUT)
+      Serial.println("no controller detected"); 
   }
   if(radio.available()){
     int payload_size = radio.getDynamicPayloadSize();
@@ -137,27 +140,23 @@ void loop() {
       radio.read(&i, payload_size);
       lx = i.lx;
       ly = i.ly;
-      rx = i.rx;
-      ry = i.ry;
+      rx = i.ry;
+      ry = i.rx;
+      ry = map(ry, 0, 180, 180, 0);
       rsw = i.rsw;
       lsw = i.lsw;
+      enable = i.enable;
     }
   }
   if((currMillis - prevMillis) < LOOP_TIME){
     //wait
   }else{
-    looptime = currMillis - prevMillis;
-    if(looptime > LOOP_TIME){
-      Serial.print("Loop time overrun by: ");
-      Serial.print(looptime-LOOP_TIME);
-      Serial.print("ms")
-    }
     sensors_event_t event;
     bno.getEvent(&event);
   
     //drive axis
-    lx = map(lx, 0,180, -90, 90);
-    input_d = event.orientation.y*-1 + lx/3;
+    driveSpeed = map(lx, 0,180, -90, 90);
+    input_d = event.orientation.y*-1 + driveSpeed/3;
     setpoint_d = 0;
     drive_PID.Compute();
     driveSpeed = map(output_d, -90, 90,1000,2000);  
@@ -166,11 +165,12 @@ void loop() {
     }else if(driveSpeed > 1550){
         driveSpeed+=150;
     }
-    driveSpeed = constrain(driveSpeed, 1000, 2000);
+    driveSpeed = constrain(driveSpeed, 900, 2000);
+    Serial.println(driveSpeed);
   
     //imu
-    input_s1 = (event.orientation.z+13)*-1;
-    setpoint_s1 = map(ly, 0, 180, -90, 90);    
+    input_s1 = (event.orientation.z+13);
+    setpoint_s1 = map(ly, 0, 180, -30, 30);
     side_PID_1.Compute(); 
   
     //potentiometer
@@ -199,12 +199,14 @@ void loop() {
     left = ((ry - 90) + (rx - 90));
     left += 90;
     left = map(left, 0,180, 650,2300);
+    left = constrain(left, 650, 2300);
   
     right = ((ry - 90) - (rx - 90));
     right += 90;
-    right = map(right, 0,180, 650,2350);
+    right = map(right, 0,180, 650,2300);
+    right = constrain(right, 650, 2300);
   
-    if(started){
+    if(started && enable){
       neck_left.writeMicroseconds(left);
       neck_right.writeMicroseconds(right);
       side.writeMicroseconds(deadband(output_s2, 1500, DEADBAND));
@@ -214,8 +216,6 @@ void loop() {
     if(currMillis>startTime+5000){
         started = true;
       }
-    //printSensorData(event, input_s2, output_s1, output_s2);
-    prevMillis = currMillis;
   }
 }
 
@@ -246,6 +246,10 @@ void printSensorData(sensors_event_t event, int sidePot, int out1, int out2){
     Serial.print(" output2 : ");
     Serial.println(out2);
   }
+
+double remap(double s, double a1, double a2, double b1, double b2){
+    return b1 + (s-a1)*(b2-b1)/(a2-a1);
+}
 
 
 void printInputs(inputs i){
