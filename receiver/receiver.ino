@@ -31,10 +31,10 @@ typedef struct inputs{
   float ly;
   float rx;
   float ry;
-  bool rsw;
-  bool lsw;
+  byte rsw;
+  byte lsw;
   bool enable;
-  bool sound;
+  byte sound;
 }inputs;
 
 int lx = 90;
@@ -75,7 +75,7 @@ void setup() {
   Serial.begin(9600);
   Serial3.begin(9600);
   Serial.println("begin");
-  sendCommand(CMD_SET_VOLUME, 0x16);
+  sendCommand(CMD_SET_VOLUME, 0x10);
   printf_begin();
 
   radio.begin();
@@ -126,7 +126,7 @@ unsigned long startTime = millis();
 bool started = false;
 unsigned long looptime = 0;
 unsigned long lastReceived, currMillis, prevMillis = 0;
-unsigned long lastSound;
+unsigned long lastSound=0;
 
 void loop() {
   currMillis = millis();
@@ -156,9 +156,12 @@ void loop() {
       sound = i.sound;
     }
   }
+  
+  
   if((currMillis - prevMillis) < LOOP_TIME){
-    //wait
+//    Serial.println(currMillis - prevMillis);
   }else{
+    prevMillis = currMillis;
     sensors_event_t event;
     bno.getEvent(&event);
   
@@ -174,13 +177,15 @@ void loop() {
         driveSpeed+=150;
     }
     driveSpeed = constrain(driveSpeed, 900, 2000);
-    Serial.println(driveSpeed);
   
     //imu
     input_s1 = (event.orientation.z+13);
     setpoint_s1 = map(ly, 0, 180, -30, 30);
     side_PID_1.Compute(); 
-  
+//    Serial.print("imu: ");
+//    Serial.print(input_s1);
+//    Serial.print(" speed: ");
+//  
     //potentiometer
     setpoint_s2 = output_s1;
     setpoint_s2 = constrain(setpoint_s2, -90, 90);
@@ -190,15 +195,16 @@ void loop() {
     side_PID_2.Compute();
     output_s2 = map(output_s2, -90, 90, 1000, 2000);
     sideSpeed = constrain(output_s2, 1000, 2000);
+//    Serial.println(sideSpeed);
   
     //head spin
     int spin;
-    if(lsw && rsw)
+    if(lsw == 1 && rsw == 1)
       spin = 1500;
-    else if(lsw)
+    else if(lsw == 1)
       spin = 1000;
-    else if(rsw)
-      spin = 1700; 
+    else if(rsw == 1)
+      spin = 2000; 
     else
       spin = 1500;
     head_spin.writeMicroseconds(spin);
@@ -217,18 +223,18 @@ void loop() {
     if(started && enable){
       neck_left.writeMicroseconds(left);
       neck_right.writeMicroseconds(right);
-      side.writeMicroseconds(deadband(output_s2, 1500, DEADBAND));
+      side.writeMicroseconds(output_s2);
       drive.writeMicroseconds(deadband(driveSpeed, 1500, DEADBAND));
     }
 
     //sounds
-    if(sound){
-      if(currMillis - lastSound){
-        lastSound - currMillis;
+    if(sound == 0){
+      if(currMillis - lastSound > 2000){
+        lastSound = currMillis;
         sendCommand(CMD_PLAY_WITHFOLDER, 0x0101);
       }
     }
-  
+    
     if(currMillis>startTime+5000){
         started = true;
     }
