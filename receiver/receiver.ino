@@ -223,7 +223,7 @@ void loop() {
 
     //sounds
     if(sound){
-      if(currMillis - lastSound){
+      if(currMillis - lastSound > 1000){
         lastSound - currMillis;
         sendCommand(CMD_PLAY_WITHFOLDER, 0x0101);
       }

@@ -15,7 +15,7 @@
 #define TR_B 25
 
 //BUTTONS
-#define GREEN_RIGHT 39
+#define GREEN_LEFT 39
 #define GREEN_RIGHT 41
 #define RED_RIGHT 43
 #define RED_LEFT 45
