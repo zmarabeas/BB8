@@ -228,9 +228,15 @@ void loop() {
     }
 
     //sounds
+<<<<<<< HEAD
+    if(sound){
+      if(currMillis - lastSound > 1000){
+        lastSound - currMillis;
+=======
     if(sound == 0){
       if(currMillis - lastSound > 2000){
         lastSound = currMillis;
+>>>>>>> 8f4a5ee6f43aea21001e6fc5e3851b476b0be555
         sendCommand(CMD_PLAY_WITHFOLDER, 0x0101);
       }
     }
